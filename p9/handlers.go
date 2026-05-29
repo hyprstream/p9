@@ -127,6 +127,15 @@ func checkSafeName(name string) error {
 	return linux.EINVAL
 }
 
+// checkWalkName validates a single path element for Twalk.
+// Unlike checkSafeName, "." and ".." are permitted.
+func checkWalkName(name string) error {
+	if name != "" && !strings.Contains(name, "/") {
+		return nil
+	}
+	return linux.EINVAL
+}
+
 func clunkHandleXattr(cs *connState, t *tclunk) message {
 	// Lookup the fid.
 	ref, ok := cs.LookupFID(t.fid)
@@ -259,6 +268,11 @@ func (t *tattach) handle(cs *connState) message {
 	if !valid.Mode {
 		sf.Close() // Drop file.
 		return newErr(linux.EINVAL)
+	}
+
+	// Store the session attach UID so creation ops inherit it.
+	if t.Auth.UID.Ok() {
+		cs.uid = t.Auth.UID
 	}
 
 	// Build a transient reference.
@@ -402,7 +416,7 @@ func (t *tlcreate) do(cs *connState, uid UID) (*rlcreate, error) {
 
 // handle implements handler.handle.
 func (t *tlcreate) handle(cs *connState) message {
-	rlcreate, err := t.do(cs, NoUID)
+	rlcreate, err := t.do(cs, cs.uid)
 	if err != nil {
 		return newErr(err)
 	}
@@ -411,7 +425,7 @@ func (t *tlcreate) handle(cs *connState) message {
 
 // handle implements handler.handle.
 func (t *tsymlink) handle(cs *connState) message {
-	rsymlink, err := t.do(cs, NoUID)
+	rsymlink, err := t.do(cs, cs.uid)
 	if err != nil {
 		return newErr(err)
 	}
@@ -816,7 +830,7 @@ func (t *twrite) handle(cs *connState) message {
 
 // handle implements handler.handle.
 func (t *tmknod) handle(cs *connState) message {
-	rmknod, err := t.do(cs, NoUID)
+	rmknod, err := t.do(cs, cs.uid)
 	if err != nil {
 		return newErr(err)
 	}
@@ -860,7 +874,7 @@ func (t *tmknod) do(cs *connState, uid UID) (*rmknod, error) {
 
 // handle implements handler.handle.
 func (t *tmkdir) handle(cs *connState) message {
-	rmkdir, err := t.do(cs, NoUID)
+	rmkdir, err := t.do(cs, cs.uid)
 	if err != nil {
 		return newErr(err)
 	}
@@ -1191,7 +1205,7 @@ func walkOne(qids []QID, from File, names []string, getattr bool) ([]QID, File, 
 func doWalk(cs *connState, ref *fidRef, names []string, getattr bool) (qids []QID, newRef *fidRef, valid AttrMask, attr Attr, err error) {
 	// Check the names.
 	for _, name := range names {
-		err = checkSafeName(name)
+		err = checkWalkName(name)
 		if err != nil {
 			return
 		}

@@ -105,6 +105,11 @@ type connState struct {
 	// version 0 implies 9P2000.L.
 	version uint32
 
+	// uid is the UID from the most recent Tattach on this connection.
+	// Used as the effective UID for creation operations (Tmkdir, Tlcreate, etc.)
+	// when the client sends the plain (non-Tu*) variants.
+	uid UID
+
 	// pendingWg counts requests that are still being handled.
 	pendingWg sync.WaitGroup
 
