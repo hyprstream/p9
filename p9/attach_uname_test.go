@@ -227,18 +227,22 @@ func TestAttachUnameReturnsUsableFile(t *testing.T) {
 }
 
 // TestAttachUnameReclaimsFidOnDenial ensures the fid allocated for a denied
-// attach is returned to the pool: repeated denied attaches must surface the
-// server denial rather than exhausting fids.
+// attach is returned to the pool. The client's pool is constrained to a single
+// usable fid (start:1, limit:2 yields exactly fid 1), so a missing Put on the
+// error path would surface as ErrOutOfFIDs on the second attempt — the default
+// pool (start:1, limit:noFID) is far too large for leakage to show. Both
+// attempts must instead return the server denial, proving the fid was reclaimed
+// and reused.
 func TestAttachUnameReclaimsFidOnDenial(t *testing.T) {
 	c, _ := serveTee(t, rejectAttacher{})
-	for i := 0; i < 16; i++ {
-		if _, err := c.AttachUname("test-ticket", "x"); err == nil {
-			t.Fatalf("denied attach %d: expected error", i)
+	c.fidPool = pool{start: 1, limit: 2}
+	for i := 0; i < 2; i++ {
+		_, err := c.AttachUname("test-ticket", "x")
+		if err == nil {
+			t.Fatalf("denied attach %d: expected server denial, got nil", i)
 		}
-	}
-	// All allocated fids must have been reclaimed; the error surfaced must be
-	// the server denial, not fid-pool exhaustion.
-	if _, err := c.AttachUname("test-ticket", "x"); err != nil && errors.Is(err, ErrOutOfFIDs) {
-		t.Fatalf("fid leaked after denied attaches: %v", err)
+		if errors.Is(err, ErrOutOfFIDs) {
+			t.Fatalf("denied attach %d: fid was not reclaimed (ErrOutOfFIDs)", i)
+		}
 	}
 }
