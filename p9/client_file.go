@@ -27,13 +27,20 @@ import (
 //
 // Note that authentication is not currently supported.
 func (c *Client) Attach(name string) (File, error) {
+	return c.AttachUname("", name)
+}
+
+// AttachUname attaches to a server with an explicit 9P uname and aname.
+//
+// Note that authentication is not currently supported.
+func (c *Client) AttachUname(uname, name string) (File, error) {
 	id, ok := c.fidPool.Get()
 	if !ok {
 		return nil, ErrOutOfFIDs
 	}
 
 	rattach := rattach{}
-	if err := c.sendRecv(&tattach{fid: fid(id), Auth: tauth{AttachName: name, Authenticationfid: noFID, UID: NoUID}}, &rattach); err != nil {
+	if err := c.sendRecv(&tattach{fid: fid(id), Auth: tauth{UserName: uname, AttachName: name, Authenticationfid: noFID, UID: NoUID}}, &rattach); err != nil {
 		c.fidPool.Put(id)
 		return nil, err
 	}
